@@ -62,14 +62,17 @@ jobs:
           provenance: false
           sbom: false
 
+      - name: Create smoke test network
+        run: docker network create fastapi4jq-net
+
       - name: Start Redis for smoke test
-        run: docker run -d --name fastapi4jq-redis -p 6379:6379 redis:7-alpine
+        run: docker run -d --name fastapi4jq-redis --network fastapi4jq-net redis:7-alpine
 
       - name: Start app container for smoke test
         run: |
-          docker run -d --name fastapi4jq-app -p 8000:8000 \
+          docker run -d --name fastapi4jq-app --network fastapi4jq-net -p 8000:8000 \
             -e SECRET_TOKEN=ci_smoke_test_token_123456 \
-            -e REDIS_HOST=host.docker.internal \
+            -e REDIS_HOST=fastapi4jq-redis \
             -e REDIS_PORT=6379 \
             fastapi4jq:smoke
 
@@ -82,7 +85,9 @@ jobs:
             fi
             sleep 2
           done
+          docker ps -a
           docker logs fastapi4jq-app
+          docker logs fastapi4jq-redis
           exit 1
 
       - name: Check readyz
@@ -94,6 +99,7 @@ jobs:
         if: always()
         run: |
           docker rm -f fastapi4jq-app fastapi4jq-redis || true
+          docker network rm fastapi4jq-net || true
 
       - name: Login to GHCR
         if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
