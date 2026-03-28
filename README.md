@@ -16,7 +16,7 @@
 如果你只是想最快把服务跑起来，可以按下面步骤执行：
 
 1. 安装依赖：`pip install -r requirements.txt`
-2. 复制配置模板：`copy .env.example .env`
+2. 复制配置模板：`cp .env.example .env`
 3. 修改 `.env` 中的 `SECRET_TOKEN`，使用真实且足够长的随机字符串
 4. 启动 Redis
 5. 启动服务：
@@ -31,10 +31,14 @@
 建议第一次启动后直接执行：
 
 ```bash
-curl http://127.0.0.1:8000/livez
-curl -H "x-token: 你的密钥" http://127.0.0.1:8000/readyz
-curl -H "x-token: 你的密钥" http://127.0.0.1:8000/metrics
-curl -H "x-token: 你的密钥" http://127.0.0.1:8000/api/queue/status
+export BASE_URL="http://127.0.0.1:8000"
+export TOKEN="请替换成你的真实密钥"
+
+# 先把 TOKEN 改成 .env 中实际配置的 SECRET_TOKEN，再调用受保护接口
+curl "$BASE_URL/livez"
+curl -H "x-token: $TOKEN" "$BASE_URL/readyz"
+curl -H "x-token: $TOKEN" "$BASE_URL/metrics"
+curl -H "x-token: $TOKEN" "$BASE_URL/api/queue/status"
 ```
 
 ## 1. 安装依赖
@@ -48,7 +52,7 @@ pip install -r requirements.txt
 把 `.env.example` 复制为 `.env`，然后按实际环境修改：
 
 ```bash
-copy .env.example .env
+cp .env.example .env
 ```
 
 必须重点修改：
@@ -88,10 +92,13 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000
 示例：
 
 ```bash
-curl -X POST http://127.0.0.1:8000/webhook/signal ^
-  -H "Content-Type: application/json" ^
-  -H "x-token: change_me_to_a_long_random_string" ^
-  -d "{\"symbol\":\"000001.XSHE\",\"action\":\"buy\",\"volume\":100,\"price\":12.34,\"strategy_id\":\"demo_strategy\",\"source\":\"jq\"}"
+export BASE_URL="http://127.0.0.1:8000"
+export TOKEN="change_me_to_a_long_random_string"
+
+curl -X POST "$BASE_URL/webhook/signal" \
+  -H "Content-Type: application/json" \
+  -H "x-token: $TOKEN" \
+  -d '{"symbol":"000001.XSHE","action":"buy","volume":100,"price":12.34,"strategy_id":"demo_strategy","source":"jq"}'
 ```
 
 返回体示例：
@@ -127,8 +134,11 @@ curl -X POST http://127.0.0.1:8000/webhook/signal ^
 示例：
 
 ```bash
-curl -X GET "http://127.0.0.1:8000/api/get_signals?limit=10" ^
-  -H "x-token: change_me_to_a_long_random_string"
+export BASE_URL="http://127.0.0.1:8000"
+export TOKEN="change_me_to_a_long_random_string"
+
+curl -X GET "$BASE_URL/api/get_signals?limit=10" \
+  -H "x-token: $TOKEN"
 ```
 
 返回的信号会进入 processing 队列，并附带 `signal_id`，QMT 需要在下单成功后回传该编号进行确认。
@@ -143,10 +153,13 @@ curl -X GET "http://127.0.0.1:8000/api/get_signals?limit=10" ^
 示例：
 
 ```bash
-curl -X POST http://127.0.0.1:8000/api/ack_signals ^
-  -H "Content-Type: application/json" ^
-  -H "x-token: change_me_to_a_long_random_string" ^
-  -d "{\"signal_ids\":[\"替换成实际 signal_id\"]}"
+export BASE_URL="http://127.0.0.1:8000"
+export TOKEN="change_me_to_a_long_random_string"
+
+curl -X POST "$BASE_URL/api/ack_signals" \
+  -H "Content-Type: application/json" \
+  -H "x-token: $TOKEN" \
+  -d '{"signal_ids":["替换成实际 signal_id"]}'
 ```
 
 如果某个 `signal_id` 不存在，或存在但不在 processing 队列中，接口会分别在 `missing` 和 `not_processing` 字段中返回，便于调用方排查状态不一致问题。
@@ -155,20 +168,56 @@ curl -X POST http://127.0.0.1:8000/api/ack_signals ^
 
 - 方法：`GET /livez`
 
+示例：
+
+```bash
+export BASE_URL="http://127.0.0.1:8000"
+
+curl "$BASE_URL/livez"
+```
+
 ### 5.5 就绪检查
 
 - 方法：`GET /readyz`
 - Header：`x-token: 你的密钥`
+
+示例：
+
+```bash
+export BASE_URL="http://127.0.0.1:8000"
+export TOKEN="change_me_to_a_long_random_string"
+
+curl -H "x-token: $TOKEN" "$BASE_URL/readyz"
+```
 
 ### 5.6 队列状态
 
 - 方法：`GET /api/queue/status`
 - Header：`x-token: 你的密钥`
 
+示例：
+
+```bash
+export BASE_URL="http://127.0.0.1:8000"
+export TOKEN="change_me_to_a_long_random_string"
+
+curl -H "x-token: $TOKEN" "$BASE_URL/api/queue/status"
+```
+
 ### 5.7 手动回补超时信号
 
 - 方法：`POST /api/queue/requeue-timeouts`
 - Header：`x-token: 你的密钥`
+
+示例：
+
+```bash
+export BASE_URL="http://127.0.0.1:8000"
+export TOKEN="change_me_to_a_long_random_string"
+
+curl -X POST "$BASE_URL/api/queue/requeue-timeouts" \
+  -H "x-token: $TOKEN"
+```
 
 说明：该接口会扫描 processing 队列，将超过 `ACK_TIMEOUT_SECONDS` 且未确认的信号回补到 pending 队列；当投递次数超过 `MAX_DELIVERY_ATTEMPTS` 时，信号会进入 dead-letter 队列，避免无限重试。生产环境建议由受保护的运维任务定期调用，而不是依赖拉取接口的隐式副作用。
 
@@ -177,22 +226,99 @@ curl -X POST http://127.0.0.1:8000/api/ack_signals ^
 - 方法：`GET /api/queue/dead-letter`
 - Header：`x-token: 你的密钥`
 
+示例：
+
+```bash
+export BASE_URL="http://127.0.0.1:8000"
+export TOKEN="change_me_to_a_long_random_string"
+
+curl -H "x-token: $TOKEN" "$BASE_URL/api/queue/dead-letter"
+```
+
 ### 5.9 重放死信
 
 - 方法：`POST /api/queue/dead-letter/replay`
 - Header：`x-token: 你的密钥`
 - Body：`{"signal_ids": ["实际 dead-letter signal_id"]}`
 
+示例：
+
+```bash
+export BASE_URL="http://127.0.0.1:8000"
+export TOKEN="change_me_to_a_long_random_string"
+
+curl -X POST "$BASE_URL/api/queue/dead-letter/replay" \
+  -H "Content-Type: application/json" \
+  -H "x-token: $TOKEN" \
+  -d '{"signal_ids":["替换成实际 dead-letter signal_id"]}'
+```
+
 ### 5.10 Prometheus 指标
 
 - 方法：`GET /metrics`
 - Header：`x-token: 你的密钥`
+
+示例：
+
+```bash
+export BASE_URL="http://127.0.0.1:8000"
+export TOKEN="change_me_to_a_long_random_string"
+
+curl -H "x-token: $TOKEN" "$BASE_URL/metrics"
+```
 
 当前会暴露 HTTP 请求计数/耗时、入队/拉取/确认/回补/死信/重放计数，以及 pending/processing/dead-letter 队列深度。
 
 说明：`/metrics` 需要 `x-token`，并且会在每次抓取前从 Redis 同步最新队列深度，避免进程重启后导出过期 backlog 数据。
 
 ## 6. 典型使用与运维流程
+
+### 6.0 一套可直接复制执行的完整演示流程
+
+下面这组命令适合本地联调时快速验证接口闭环。执行前请先确认服务已经启动，并把 `TOKEN` 改成你在 `.env` 中实际配置的 `SECRET_TOKEN`。
+
+```bash
+export BASE_URL="http://127.0.0.1:8000"
+export TOKEN="请替换成你的真实密钥"
+
+# 1) 推送一条测试信号
+curl -X POST "$BASE_URL/webhook/signal" \
+  -H "Content-Type: application/json" \
+  -H "x-token: $TOKEN" \
+  -d '{"symbol":"000001.XSHE","action":"buy","volume":100,"price":12.34,"strategy_id":"demo_strategy","source":"jq"}'
+
+# 2) 拉取待处理信号
+curl -X GET "$BASE_URL/api/get_signals?limit=10" \
+  -H "x-token: $TOKEN"
+
+# 3) 用上一步返回的 signal_id 确认消费
+curl -X POST "$BASE_URL/api/ack_signals" \
+  -H "Content-Type: application/json" \
+  -H "x-token: $TOKEN" \
+  -d '{"signal_ids":["替换成实际 signal_id"]}'
+
+# 4) 查看当前队列状态
+curl -H "x-token: $TOKEN" "$BASE_URL/api/queue/status"
+
+# 5) 如需排查超时未确认信号，可手动触发回补
+curl -X POST "$BASE_URL/api/queue/requeue-timeouts" \
+  -H "x-token: $TOKEN"
+
+# 6) 查看死信队列
+curl -H "x-token: $TOKEN" "$BASE_URL/api/queue/dead-letter"
+```
+
+如果你希望验证 dead-letter 重放流程，可以在拿到实际 dead-letter `signal_id` 后继续执行：
+
+```bash
+export BASE_URL="http://127.0.0.1:8000"
+export TOKEN="请替换成你的真实密钥"
+
+curl -X POST "$BASE_URL/api/queue/dead-letter/replay" \
+  -H "Content-Type: application/json" \
+  -H "x-token: $TOKEN" \
+  -d '{"signal_ids":["替换成实际 dead-letter signal_id"]}'
+```
 
 ### 6.1 正常业务闭环
 
@@ -338,7 +464,9 @@ ghcr.io/xujw3/jqmt:v0.1.0
 拉取镜像：
 
 ```bash
-docker pull ghcr.io/xujw3/jqmt:latest
+export IMAGE="ghcr.io/xujw3/jqmt:latest"
+
+docker pull "$IMAGE"
 ```
 
 ### 12.3 使用 docker run 直接启动
@@ -346,12 +474,14 @@ docker pull ghcr.io/xujw3/jqmt:latest
 最小可运行示例：
 
 ```bash
+export IMAGE="ghcr.io/xujw3/jqmt:latest"
+
 docker run -d --name jqmt \
   -p 8000:8000 \
-  -e SECRET_TOKEN=请替换成真实高强度密钥 \
-  -e REDIS_HOST=宿主机或Redis地址 \
+  -e SECRET_TOKEN="请替换成真实高强度密钥" \
+  -e REDIS_HOST="宿主机或Redis地址" \
   -e REDIS_PORT=6379 \
-  ghcr.io/xujw3/jqmt:latest
+  "$IMAGE"
 ```
 
 如果 Redis 也跑在 Docker 中，推荐把应用容器和 Redis 容器放到同一个 Docker network 中，然后让 `REDIS_HOST` 指向 Redis 容器名。
@@ -359,6 +489,8 @@ docker run -d --name jqmt \
 例如：
 
 ```bash
+export IMAGE="ghcr.io/xujw3/jqmt:latest"
+
 docker network create jqmt-net
 
 docker run -d --name jqmt-redis --network jqmt-net redis:7-alpine
@@ -366,10 +498,10 @@ docker run -d --name jqmt-redis --network jqmt-net redis:7-alpine
 docker run -d --name jqmt \
   --network jqmt-net \
   -p 8000:8000 \
-  -e SECRET_TOKEN=请替换成真实高强度密钥 \
+  -e SECRET_TOKEN="请替换成真实高强度密钥" \
   -e REDIS_HOST=jqmt-redis \
   -e REDIS_PORT=6379 \
-  ghcr.io/xujw3/jqmt:latest
+  "$IMAGE"
 ```
 
 ### 12.4 容器启动后如何验证
@@ -377,10 +509,13 @@ docker run -d --name jqmt \
 启动后建议依次检查：
 
 ```bash
-curl http://127.0.0.1:8000/livez
-curl -H "x-token: 你的密钥" http://127.0.0.1:8000/readyz
-curl -H "x-token: 你的密钥" http://127.0.0.1:8000/metrics
-curl -H "x-token: 你的密钥" http://127.0.0.1:8000/api/queue/status
+export BASE_URL="http://127.0.0.1:8000"
+export TOKEN="请替换成你的真实密钥"
+
+curl "$BASE_URL/livez"
+curl -H "x-token: $TOKEN" "$BASE_URL/readyz"
+curl -H "x-token: $TOKEN" "$BASE_URL/metrics"
+curl -H "x-token: $TOKEN" "$BASE_URL/api/queue/status"
 ```
 
 如果容器启动失败，可以先看日志：
